@@ -8,7 +8,7 @@ Usage:
     python search.py "dark hair" --top 10                  # more results
     python search.py "portrait" --category Large           # filter by category
 
-Environment variables:
+Environment variables (loaded automatically from backend/.env if present):
     QVLRAG_QWEN_URL   — Qwen server URL (default: http://localhost:8000)
     QVLRAG_NEO4J_URI  — Neo4j bolt URI (default: bolt://localhost:7687)
     QVLRAG_NEO4J_USER — Neo4j username (default: neo4j)
@@ -22,13 +22,17 @@ import sys
 from pathlib import Path
 
 import requests
+from dotenv import load_dotenv
 from neo4j import GraphDatabase
+
+load_dotenv(Path(__file__).resolve().parent / "backend" / ".env")
 
 QWEN_BASE = os.getenv("QVLRAG_QWEN_URL", "http://localhost:8000")
 QWEN_URL = f"{QWEN_BASE}/v1/embeddings"
 NEO4J_URI = os.getenv("QVLRAG_NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("QVLRAG_NEO4J_USER", "neo4j")
 NEO4J_PASS = os.getenv("QVLRAG_NEO4J_PASS", "")
+VECTOR_INDEX = os.getenv("QVLRAG_VECTOR_INDEX", "velvet_image_vector")
 
 
 def embed_text(text: str) -> list[float]:
@@ -55,8 +59,8 @@ def embed_image(image_path: str) -> list[float]:
 def search(driver, embedding: list[float], top_n: int = 5, category: str = None) -> list[dict]:
     with driver.session() as session:
         if category:
-            result = session.run("""
-                CALL db.index.vector.queryNodes('velvet_image_vector', $top_n, $embedding)
+            result = session.run(f"""
+                CALL db.index.vector.queryNodes('{VECTOR_INDEX}', $top_n, $embedding)
                 YIELD node, score
                 WHERE node.size_category = $category
                 RETURN node.path AS path,
@@ -67,8 +71,8 @@ def search(driver, embedding: list[float], top_n: int = 5, category: str = None)
                 ORDER BY score DESC
             """, embedding=embedding, top_n=top_n * 3, category=category)
         else:
-            result = session.run("""
-                CALL db.index.vector.queryNodes('velvet_image_vector', $top_n, $embedding)
+            result = session.run(f"""
+                CALL db.index.vector.queryNodes('{VECTOR_INDEX}', $top_n, $embedding)
                 YIELD node, score
                 RETURN node.path AS path,
                        node.filename AS filename,
@@ -81,11 +85,20 @@ def search(driver, embedding: list[float], top_n: int = 5, category: str = None)
         return [dict(row) for row in result][:top_n]
 
 
+def open_with_default_app(path: str):
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", path])
+    elif os.name == "nt":
+        os.startfile(path)
+    else:
+        subprocess.Popen(["xdg-open", path])
+
+
 def open_images(paths: list[str]):
     """Open images in default viewer."""
     for path in paths:
         try:
-            subprocess.Popen(["xdg-open", path])
+            open_with_default_app(path)
         except Exception as e:
             print(f"  Could not open {path}: {e}")
 

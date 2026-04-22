@@ -5,12 +5,12 @@ Walks an image directory tree, embeds each image via a Qwen VL embedding server,
 and stores as VelvetImage nodes in Neo4j. Resumable — skips already-embedded images.
 
 Usage:
-    python ingest.py --root /path/to/images       # ingest everything
-    python ingest.py --root /path/to/images --dry-run   # show what would be ingested
-    python ingest.py --root /path/to/images --limit 100 # ingest first N images
-    python ingest.py --root /path/to/images --folder Large  # ingest one subfolder only
+    python ingest.py --root /path/to/images            # ingest everything
+    python ingest.py --dry-run                         # use QVLRAG_LIBRARY_ROOT from backend/.env
+    python ingest.py --limit 100                       # ingest first N images
+    python ingest.py --folder Large                    # ingest one subfolder only
 
-Environment variables (or pass --root on the CLI):
+Environment variables (loaded automatically from backend/.env if present):
     QVLRAG_QWEN_URL   — Qwen server URL (default: http://localhost:8000)
     QVLRAG_NEO4J_URI  — Neo4j bolt URI (default: bolt://localhost:7687)
     QVLRAG_NEO4J_USER — Neo4j username (default: neo4j)
@@ -24,7 +24,10 @@ import time
 from pathlib import Path
 
 import requests
+from dotenv import load_dotenv
 from neo4j import GraphDatabase
+
+load_dotenv(Path(__file__).resolve().parent / "backend" / ".env")
 
 # ── Config (from environment, with sensible defaults) ─────────────────────────
 
@@ -33,6 +36,7 @@ QWEN_URL = f"{QWEN_BASE}/v1/embeddings"
 NEO4J_URI = os.getenv("QVLRAG_NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("QVLRAG_NEO4J_USER", "neo4j")
 NEO4J_PASS = os.getenv("QVLRAG_NEO4J_PASS", "")
+LIBRARY_ROOT = os.getenv("QVLRAG_LIBRARY_ROOT", "")
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 BATCH_SIZE = 5          # Images per Neo4j write batch
@@ -137,7 +141,13 @@ def format_eta(elapsed: float, done: int, total: int) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="Image → Neo4j ingestion via Qwen VL embeddings")
-    parser.add_argument("--root", type=str, required=True, help="Root directory of images to ingest")
+    parser.add_argument(
+        "--root",
+        type=str,
+        default=LIBRARY_ROOT,
+        required=not bool(LIBRARY_ROOT),
+        help="Root directory of images to ingest (defaults to QVLRAG_LIBRARY_ROOT)",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Show what would be ingested without doing it")
     parser.add_argument("--limit", type=int, default=None, help="Max images to ingest")
     parser.add_argument("--folder", type=str, default=None, help="Only ingest images from this folder (e.g. 'Large')")

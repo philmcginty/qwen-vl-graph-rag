@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -14,8 +16,12 @@ from fastapi.responses import StreamingResponse
 from neo4j import GraphDatabase
 from pydantic import BaseModel
 
-from config import settings
-from thumbs import make_data_url
+try:
+    from .config import settings
+    from .thumbs import make_data_url
+except ImportError:
+    from config import settings
+    from thumbs import make_data_url
 
 app = FastAPI(title="qwen-vlrag API", version="0.1.0")
 active_ingest_process: subprocess.Popen[str] | None = None
@@ -40,6 +46,15 @@ def qwen_health() -> dict[str, Any]:
     response = requests.get(f"{settings.qwen_url}/health", timeout=5)
     response.raise_for_status()
     return response.json()
+
+
+def open_with_default_app(path: Path) -> None:
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", str(path)])
+    elif os.name == "nt":
+        os.startfile(str(path))
+    else:
+        subprocess.Popen(["xdg-open", str(path)])
 
 
 def embed_text(text: str) -> list[float]:
@@ -266,7 +281,7 @@ def open_file(request: OpenRequest):
         raise HTTPException(status_code=404, detail="File not found")
 
     try:
-        subprocess.Popen(["xdg-open", str(path)])
+        open_with_default_app(path)
         return {"ok": True, "path": str(path)}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

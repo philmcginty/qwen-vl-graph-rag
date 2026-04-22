@@ -3,6 +3,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent / ".env")
+
 
 class Settings:
     qwen_url: str = os.getenv("QVLRAG_QWEN_URL", "http://localhost:8000")

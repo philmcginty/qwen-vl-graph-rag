@@ -2,20 +2,26 @@
 setup_neo4j.py — One-time Neo4j setup for qwen-vlrag
 Creates vector indexes and constraints. Run once before ingest.
 
-Environment variables:
-    QVLRAG_NEO4J_URI  — Neo4j bolt URI (default: bolt://localhost:7687)
-    QVLRAG_NEO4J_USER — Neo4j username (default: neo4j)
-    QVLRAG_NEO4J_PASS — Neo4j password (default: empty)
+Environment variables (loaded automatically from backend/.env if present):
+    QVLRAG_NEO4J_URI   — Neo4j bolt URI (default: bolt://localhost:7687)
+    QVLRAG_NEO4J_USER  — Neo4j username (default: neo4j)
+    QVLRAG_NEO4J_PASS  — Neo4j password (default: empty)
+    QVLRAG_VECTOR_INDEX — Neo4j vector index name (default: velvet_image_vector)
 """
 
 import os
 import sys
+from pathlib import Path
 
+from dotenv import load_dotenv
 from neo4j import GraphDatabase
+
+load_dotenv(Path(__file__).resolve().parent / "backend" / ".env")
 
 NEO4J_URI = os.getenv("QVLRAG_NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("QVLRAG_NEO4J_USER", "neo4j")
 NEO4J_PASS = os.getenv("QVLRAG_NEO4J_PASS", "")
+VECTOR_INDEX = os.getenv("QVLRAG_VECTOR_INDEX", "velvet_image_vector")
 VECTOR_DIM = 2048  # Qwen3-VL-Embedding-2B output dimension
 
 
@@ -33,16 +39,16 @@ def run(driver):
         # ── Vector Indexes ────────────────────────────────────────────
         print("Creating vector indexes...")
 
-        result = session.run("""
+        result = session.run(f"""
             SHOW INDEXES YIELD name, type
-            WHERE name = 'velvet_image_vector'
+            WHERE name = '{VECTOR_INDEX}'
             RETURN name
         """)
         if result.single():
-            print("  ⚠ velvet_image_vector already exists — skipping")
+            print(f"  ⚠ {VECTOR_INDEX} already exists — skipping")
         else:
             session.run(f"""
-                CREATE VECTOR INDEX velvet_image_vector IF NOT EXISTS
+                CREATE VECTOR INDEX {VECTOR_INDEX} IF NOT EXISTS
                 FOR (i:VelvetImage) ON (i.embedding)
                 OPTIONS {{
                     indexConfig: {{
@@ -51,7 +57,7 @@ def run(driver):
                     }}
                 }}
             """)
-            print(f"  ✓ velvet_image_vector ({VECTOR_DIM}d, cosine)")
+            print(f"  ✓ {VECTOR_INDEX} ({VECTOR_DIM}d, cosine)")
 
         # ── Verify ────────────────────────────────────────────────────
         print("\nCurrent indexes:")
