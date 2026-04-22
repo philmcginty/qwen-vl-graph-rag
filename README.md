@@ -201,11 +201,11 @@ before running:
 python ingest.py
 ```
 
-### Local path assumption
+### Image inputs are sent as bytes
 
-`ingest.py` and CLI image search use image file paths when talking to the Qwen server.
+`ingest.py`, CLI image search, and the web upload path send image content to the Qwen server as bytes/base64.
 
-That means the Qwen server must be able to access the same filesystem paths as this repo. If your Qwen server is remote or containerized, mount the image library into that environment or adapt the scripts to send image bytes instead of paths.
+That means you do not need to enable path-based image loading on the Qwen server for normal use.
 
 ### Safer file opening behavior
 

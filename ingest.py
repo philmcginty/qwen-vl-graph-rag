@@ -18,6 +18,7 @@ Environment variables (loaded automatically from backend/.env if present):
 """
 
 import argparse
+import base64
 import os
 import sys
 import time
@@ -88,12 +89,13 @@ def get_ingested_paths(driver) -> set:
 def embed_image(image_path: Path) -> list[float] | None:
     """Get embedding for an image file via Qwen server."""
     try:
+        encoded = base64.b64encode(image_path.read_bytes()).decode("utf-8")
         payload = {
             "input": {
                 "text": "",  # Empty text — pure visual embedding
                 "image": {
-                    "type": "path",
-                    "data": str(image_path)
+                    "type": "base64",
+                    "data": encoded,
                 }
             },
             "model": "qwen-vl-embedding"

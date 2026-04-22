@@ -16,6 +16,7 @@ Environment variables (loaded automatically from backend/.env if present):
 """
 
 import argparse
+import base64
 import os
 import re
 import subprocess
@@ -52,10 +53,11 @@ def embed_text(text: str) -> list[float]:
 
 
 def embed_image(image_path: str) -> list[float]:
+    encoded = base64.b64encode(Path(image_path).read_bytes()).decode("utf-8")
     resp = requests.post(QWEN_URL, json={
         "input": {
             "text": "",
-            "image": {"type": "path", "data": image_path}
+            "image": {"type": "base64", "data": encoded}
         },
         "model": "qwen-vl-embedding"
     }, timeout=60)
