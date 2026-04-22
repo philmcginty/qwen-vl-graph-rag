@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VLRAG Control Console</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        gray: {
+                            850: '#1f2937',
+                            900: '#111827',
+                            950: '#0b0f19',
+                        },
+                        accent: {
+                            500: '#8b5cf6', // Violet
+                            600: '#7c3aed',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Menlo', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar for the terminal/logs */
+        .term-scroll::-webkit-scrollbar { width: 8px; }
+        .term-scroll::-webkit-scrollbar-track { background: #0b0f19; }
+        .term-scroll::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+        .term-scroll::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+        
+        .tab-active { border-bottom: 2px solid #8b5cf6; color: #f3f4f6; }
+        .tab-inactive { border-bottom: 2px solid transparent; color: #9ca3af; }
+        .tab-inactive:hover { color: #d1d5db; border-bottom: 2px solid #374151; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-200 font-sans min-h-screen flex flex-col selection:bg-accent-500 selection:text-white">
+
+    <!-- Header & Status Bar -->
+    <header class="bg-gray-900 border-b border-gray-800 sticky top-0 z-10 px-6 py-4 flex justify-between items-center shadow-lg">
+        <div class="flex items-center gap-3">
+            <i class="ph ph-brain text-2xl text-accent-500"></i>
+            <h1 class="font-bold text-xl tracking-tight text-white">VLRAG <span class="text-gray-500 font-normal">Console</span></h1>
+        </div>
+        
+        <!-- Status Indicators -->
+        <div class="flex items-center gap-6 text-sm font-medium">
+            <div class="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-full border border-gray-700/50">
+                <div id="status-qwen" class="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse transition-colors duration-300"></div>
+                <span class="text-gray-300">Qwen VL</span>
+            </div>
+            <div class="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-full border border-gray-700/50">
+                <div id="status-neo4j" class="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse transition-colors duration-300"></div>
+                <span class="text-gray-300">Neo4j</span>
+            </div>
+            <div class="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-full border border-gray-700/50" title="Indexed Images">
+                <i class="ph ph-database text-gray-400"></i>
+                <span id="status-count" class="text-gray-100 font-mono">---</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-6 flex flex-col gap-6">
+        
+        <!-- Tab Navigation -->
+        <nav class="flex gap-6 border-b border-gray-800">
+            <button onclick="switchTab('ingest')" id="tab-btn-ingest" class="pb-3 px-1 text-sm font-semibold transition-colors tab-active">
+                <div class="flex items-center gap-2"><i class="ph ph-download-simple"></i> Ingestion Engine</div>
+            </button>
+            <button onclick="switchTab('search')" id="tab-btn-search" class="pb-3 px-1 text-sm font-semibold transition-colors tab-inactive">
+                <div class="flex items-center gap-2"><i class="ph ph-magnifying-glass"></i> Vector Search</div>
+            </button>
+        </nav>
+
+        <!-- ================= INGEST TAB ================= -->
+        <div id="tab-ingest" class="flex flex-col gap-6 animate-fade-in">
+            <!-- Controls -->
+            <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-sm">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-5 items-end">
+                    
+                    <div class="flex flex-col gap-2">
+                        <label class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Target Folder</label>
+                        <select id="ingest-folder" class="bg-gray-950 border border-gray-700 text-white text-sm rounded-lg focus:ring-accent-500 focus:border-accent-500 block w-full p-2.5 outline-none transition-all">
+                            <option value="All">All Categories</option>
+                            <option value="Large">Large</option>
+                            <option value="Medium">Medium</option>
+                            <option value="Small">Small</option>
+                            <option value="Video">Video Extracts</option>
+                        </select>
+                    </div>
+
+                    <div class="flex flex-col gap-2">
+                        <label class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Limit (Optional)</label>
+                        <input type="number" id="ingest-limit" placeholder="Blank for all" class="bg-gray-950 border border-gray-700 text-white text-sm rounded-lg focus:ring-accent-500 focus:border-accent-500 block w-full p-2.5 outline-none transition-all">
+                    </div>
+
+                    <div class="flex items-center gap-3 pb-2.5">
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="ingest-resume" class="sr-only peer" checked>
+                            <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent-500"></div>
+                            <span class="ml-3 text-sm font-medium text-gray-300">Resume Mode</span>
+                        </label>
+                    </div>
+
+                    <div class="flex gap-3 justify-end">
+                        <button id="btn-stop" onclick="stopIngestion()" class="hidden px-5 py-2.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 border border-red-500/20 rounded-lg text-sm font-semibold transition-all items-center gap-2">
+                            <i class="ph-fill ph-stop"></i> Stop
+                        </button>
+                        <button id="btn-start" onclick="startIngestion()" class="w-full md:w-auto px-6 py-2.5 bg-accent-600 hover:bg-accent-500 text-white rounded-lg text-sm font-semibold transition-all flex justify-center items-center gap-2 shadow-[0_0_15px_rgba(124,58,237,0.3)]">
+                            <i class="ph-fill ph-play"></i> Start Ingest
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Progress Area -->
+            <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-sm flex flex-col gap-3">
+                <div class="flex justify-between items-end">
+                    <span class="text-sm font-semibold text-gray-300" id="progress-text">Ready to ingest</span>
+                    <span class="text-xs font-mono text-gray-500" id="progress-stats">0 / 0</span>
+                </div>
+                <div class="w-full bg-gray-800 rounded-full h-2.5 overflow-hidden">
+                    <div id="progress-bar" class="bg-accent-500 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- Terminal Log -->
+            <div class="bg-[#0A0A0A] border border-gray-800 rounded-xl shadow-inner flex flex-col flex-1 min-h-[300px] overflow-hidden">
+                <div class="bg-gray-800/40 border-b border-gray-800 px-4 py-2 flex items-center gap-2">
+                    <i class="ph ph-terminal-window text-gray-400"></i>
+                    <span class="text-xs font-mono text-gray-400">subprocess_tail.log</span>
+                </div>
+                <div id="terminal-output" class="p-4 font-mono text-xs md:text-sm text-gray-300 overflow-y-auto term-scroll flex-1 h-[300px] space-y-1">
+                    <div class="text-gray-500">System initialized. Awaiting parameters.</div>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- ================= SEARCH TAB ================= -->
+        <div id="tab-search" class="hidden flex-col gap-6 animate-fade-in">
+            
+            <!-- Search Controls -->
+            <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 shadow-sm">
+                <div class="flex flex-col gap-5">
+                    
+                    <!-- Search Inputs -->
+                    <div class="flex flex-col md:flex-row gap-3 relative">
+                        <div class="relative flex-1">
+                            <i class="ph ph-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-lg"></i>
+                            <input type="text" id="search-query" placeholder="Describe the image (e.g., 'dark hair portrait outdoor minimal lighting')..." 
+                                class="bg-gray-950 border border-gray-700 text-white rounded-lg focus:ring-accent-500 focus:border-accent-500 block w-full pl-11 p-3.5 outline-none transition-all"
+                                onkeypress="if(event.key === 'Enter') executeSearch()">
+                        </div>
+                        <div class="flex items-center justify-center border-l border-r md:border-r-0 border-gray-700/50 px-2 my-2 md:my-0">
+                            <span class="text-xs font-bold text-gray-500 uppercase">OR</span>
+                        </div>
+                        <div class="relative">
+                            <input type="file" id="search-image" class="hidden" accept="image/*" onchange="handleImageSelect(event)">
+                            <button onclick="document.getElementById('search-image').click()" id="btn-img-upload" class="h-full px-5 py-3.5 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 whitespace-nowrap">
+                                <i class="ph ph-image"></i> Image Select
+                            </button>
+                        </div>
+                        <button onclick="executeSearch()" class="px-8 py-3.5 bg-accent-600 hover:bg-accent-500 text-white rounded-lg text-sm font-semibold transition-all shadow-[0_0_15px_rgba(124,58,237,0.3)]">
+                            Search
+                        </button>
+                    </div>
+
+                    <!-- Filters -->
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pt-4 border-t border-gray-800">
+                        <div class="flex gap-4 items-center">
+                            <div class="flex items-center gap-2">
+                                <i class="ph ph-funnel text-gray-400"></i>
+                                <select id="search-category" class="bg-transparent text-sm text-gray-300 font-medium outline-none cursor-pointer hover:text-white transition-colors border-b border-dashed border-gray-600 pb-0.5">
+                                    <option value="All">All Categories</option>
+                                    <option value="Large">Large</option>
+                                    <option value="Medium">Medium</option>
+                                    <option value="Video">Video</option>
+                                </select>
+                            </div>
+                            <div class="h-4 w-px bg-gray-700"></div>
+                            <div class="flex items-center gap-3">
+                                <span class="text-sm text-gray-400">Top N:</span>
+                                <input type="range" id="search-top-n" min="5" max="50" step="5" value="20" class="w-24 accent-accent-500" oninput="document.getElementById('top-n-display').innerText = this.value">
+                                <span id="top-n-display" class="text-sm font-mono text-gray-300 w-6">20</span>
+                            </div>
+                        </div>
+
+                        <!-- Recent Searches Chips -->
+                        <div class="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 hide-scrollbar" id="recent-searches">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Grid -->
+            <div class="flex flex-col gap-4">
+                <div class="flex justify-between items-center px-1">
+                    <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">Results <span id="results-count" class="text-gray-500 normal-case font-mono ml-2"></span></h3>
+                </div>
+                
+                <div id="results-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                    <!-- Results populated here -->
+                    <div class="col-span-full py-12 text-center text-gray-500 flex flex-col items-center gap-2 border border-dashed border-gray-800 rounded-xl">
+                        <i class="ph ph-magnifying-glass text-3xl mb-2 text-gray-600"></i>
+                        <p>Awaiting query. Initialize search vector to retrieve matches.</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        /**
+         * ==========================================
+         * VLRAG CONFIGURATION & API BINDINGS
+         * ==========================================
+         * Set MOCK_MODE = false when connecting to your real FastAPI backend.
+         */
+        const CONFIG = {
+            MOCK_MODE: false,
+            API_BASE: 'http://localhost:8001/api', // FastAPI wrapper base URL
+            QWEN_URL: 'http://localhost:8000',     // Qwen embedding server healthcheck
+        };
+
+        // State variables
+        let isIngesting = false;
+        let ingestSimulationInterval;
+        const recentSearchesKey = 'vlrag_recent_searches';
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadRecentSearches();
+            pollStatus();
+            // Start polling interval
+            setInterval(pollStatus, 5000); 
+        });
+
+        // --- Tab Switching ---
+        function switchTab(tabName) {
+            document.getElementById('tab-ingest').classList.toggle('hidden', tabName !== 'ingest');
+            document.getElementById('tab-search').classList.toggle('hidden', tabName !== 'search');
+            
+            const btnIngest = document.getElementById('tab-btn-ingest');
+            const btnSearch = document.getElementById('tab-btn-search');
+
+            if (tabName === 'ingest') {
+                btnIngest.className = "pb-3 px-1 text-sm font-semibold transition-colors tab-active";
+                btnSearch.className = "pb-3 px-1 text-sm font-semibold transition-colors tab-inactive";
+            } else {
+                btnSearch.className = "pb-3 px-1 text-sm font-semibold transition-colors tab-active";
+                btnIngest.className = "pb-3 px-1 text-sm font-semibold transition-colors tab-inactive";
+            }
+        }
+
+        // --- Status Polling ---
+        async function pollStatus() {
+            const elQwen = document.getElementById('status-qwen');
+            const elNeo = document.getElementById('status-neo4j');
+            const elCount = document.getElementById('status-count');
+
+            if (CONFIG.MOCK_MODE) {
+                // Mock statuses (all green)
+                elQwen.classList.replace('bg-red-500', 'bg-emerald-400');
+                elNeo.classList.replace('bg-red-500', 'bg-emerald-400');
+                // Simulate fluctuating DB count
+                const baseCount = parseInt(elCount.innerText) || 12450;
+                elCount.innerText = (baseCount + Math.floor(Math.random() * 5)).toLocaleString();
+                return;
+            }
+
+            try {
+                // Replace with actual FastAPI healthcheck endpoint
+                const res = await fetch(`${CONFIG.API_BASE}/health`); 
+                if (res.ok) {
+                    const data = await res.json();
+                    elQwen.classList.replace(data.qwen_up ? 'bg-red-500' : 'bg-emerald-400', data.qwen_up ? 'bg-emerald-400' : 'bg-red-500');
+                    elNeo.classList.replace(data.neo4j_up ? 'bg-red-500' : 'bg-emerald-400', data.neo4j_up ? 'bg-emerald-400' : 'bg-red-500');
+                    elCount.innerText = data.node_count.toLocaleString();
+                }
+            } catch (err) {
+                elQwen.classList.replace('bg-emerald-400', 'bg-red-500');
+                elNeo.classList.replace('bg-emerald-400', 'bg-red-500');
+                elCount.innerText = 'ERR';
+            }
+        }
+
+        // --- Terminal Helper ---
+        function logToTerminal(message, type = 'info') {
+            const term = document.getElementById('terminal-output');
+            const div = document.createElement('div');
+            
+            const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit', fractionalSecondDigits: 3 });
+            
+            let colorClass = 'text-gray-300';
+            if (type === 'error') colorClass = 'text-red-400';
+            if (type === 'success') colorClass = 'text-emerald-400';
+            if (type === 'warn') colorClass = 'text-yellow-400';
+
+            div.innerHTML = `<span class="text-gray-600">[${timestamp}]</span> <span class="${colorClass}">${message}</span>`;
+            term.appendChild(div);
+            
+            // Auto scroll to bottom
+            term.scrollTop = term.scrollHeight;
+        }
+
+        // --- Ingestion Logic ---
+        async function startIngestion() {
+            if (isIngesting) return;
+
+            const folder = document.getElementById('ingest-folder').value;
+            const limit = document.getElementById('ingest-limit').value;
+            const resume = document.getElementById('ingest-resume').checked;
+
+            document.getElementById('btn-start').classList.add('hidden');
+            document.getElementById('btn-stop').classList.remove('hidden');
+            
+            const progressText = document.getElementById('progress-text');
+            const stats = document.getElementById('progress-stats');
+            const bar = document.getElementById('progress-bar');
+            
+            isIngesting = true;
+            document.getElementById('terminal-output').innerHTML = '';
+            progressText.innerText = 'Starting ingest...';
+            stats.innerText = 'streaming';
+            bar.style.width = '100%';
+            
+            logToTerminal(`Initializing ingest subprocess (Folder: ${folder}, Limit: ${limit || 'None'}, Resume: ${resume})`, 'info');
+
+            if (CONFIG.MOCK_MODE) {
+                logToTerminal('MOCK_MODE is on; real ingest skipped.', 'warn');
+                setTimeout(() => stopIngestion(), 1000);
+                return;
+            }
+
+            try {
+                const res = await fetch(`${CONFIG.API_BASE}/ingest`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        folder,
+                        limit: limit ? parseInt(limit, 10) : null,
+                        resume,
+                    }),
+                });
+
+                if (!res.ok || !res.body) {
+                    const text = await res.text();
+                    throw new Error(text || `HTTP ${res.status}`);
+                }
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+
+                    const chunks = buffer.split('\n\n');
+                    buffer = chunks.pop() || '';
+
+                    for (const chunk of chunks) {
+                        const lines = chunk.split('\n');
+                        let eventName = 'message';
+                        let dataLine = '';
+
+                        for (const line of lines) {
+                            if (line.startsWith('event:')) eventName = line.slice(6).trim();
+                            if (line.startsWith('data:')) dataLine += line.slice(5).trim();
+                        }
+
+                        if (!dataLine) continue;
+                        const payload = JSON.parse(dataLine);
+
+                        if (eventName === 'start') {
+                            progressText.innerText = 'Ingest running...';
+                            logToTerminal(`Started: ${payload.command.join(' ')}`, 'info');
+                        } else if (eventName === 'log') {
+                            logToTerminal(payload.line, 'info');
+                        } else if (eventName === 'error') {
+                            logToTerminal(payload.message, 'error');
+                        } else if (eventName === 'done') {
+                            progressText.innerText = payload.ok ? 'Ingestion Complete.' : 'Ingestion Failed.';
+                            logToTerminal(`Ingest exited with code ${payload.returncode}`, payload.ok ? 'success' : 'error');
+                            stopIngestion(payload.ok);
+                            pollStatus();
+                        }
+                    }
+                }
+            } catch (err) {
+                logToTerminal(`Ingest request failed: ${err.message}`, 'error');
+                stopIngestion(false);
+            }
+        }
+
+        function stopIngestion(completed = false) {
+            isIngesting = false;
+            if (ingestSimulationInterval) clearInterval(ingestSimulationInterval);
+            
+            document.getElementById('btn-stop').classList.add('hidden');
+            document.getElementById('btn-start').classList.remove('hidden');
+            
+            const progressText = document.getElementById('progress-text');
+            if (completed) {
+                progressText.innerText = "Ingestion Complete.";
+                logToTerminal(`Process completed successfully.`, 'success');
+            } else {
+                progressText.innerText = "Ingestion Aborted.";
+                logToTerminal(`Received stop signal. Terminating subprocess.`, 'warn');
+            }
+        }
+
+        // --- Search Logic ---
+        function handleImageSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const btn = document.getElementById('btn-img-upload');
+            btn.innerHTML = `<i class="ph ph-image-fill text-accent-500"></i> ${file.name.substring(0, 15)}...`;
+            btn.classList.add('border-accent-500', 'text-white');
+            
+            // Clear text query if image selected (optional preference)
+            document.getElementById('search-query').value = '';
+            
+            logToTerminal(`Image selected for semantic search: ${file.name}`, 'info');
+        }
+
+        async function executeSearch(query = null) {
+            const inputQuery = query || document.getElementById('search-query').value.trim();
+            const imageFile = document.getElementById('search-image').files[0];
+            const category = document.getElementById('search-category').value;
+            const topN = document.getElementById('search-top-n').value;
+
+            if (!inputQuery && !imageFile) return;
+
+            const grid = document.getElementById('results-grid');
+            grid.innerHTML = `
+                <div class="col-span-full py-12 flex justify-center items-center">
+                    <i class="ph ph-spinner-gap text-3xl text-accent-500 animate-spin"></i>
+                </div>
+            `;
+            document.getElementById('results-count').innerText = 'Searching...';
+
+            if (inputQuery) saveRecentSearch(inputQuery);
+
+            if (CONFIG.MOCK_MODE) {
+                logToTerminal('MOCK_MODE is on; real search skipped.', 'warn');
+                return;
+            }
+
+            const formData = new FormData();
+            if (inputQuery) formData.append('text', inputQuery);
+            if (imageFile) formData.append('image', imageFile);
+            if (category && category !== 'All') formData.append('category', category);
+            formData.append('top_n', topN);
+
+            try {
+                const res = await fetch(`${CONFIG.API_BASE}/search`, { method: 'POST', body: formData });
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(text || `HTTP ${res.status}`);
+                }
+                const data = await res.json();
+                renderResults(data);
+                logToTerminal(`Search returned ${data.length} results.`, 'success');
+            } catch (err) {
+                console.error(err);
+                logToTerminal(`Search failed: ${err.message}`, 'error');
+                grid.innerHTML = `<div class="col-span-full py-12 text-center text-red-500">Error executing search.</div>`;
+                document.getElementById('results-count').innerText = '(error)';
+            }
+        }
+
+        function renderResults(results) {
+            const grid = document.getElementById('results-grid');
+            document.getElementById('results-count').innerText = `(${results.length})`;
+            
+            if (results.length === 0) {
+                grid.innerHTML = `<div class="col-span-full py-12 text-center text-gray-500">No matches found within threshold.</div>`;
+                return;
+            }
+
+            grid.innerHTML = '';
+            results.forEach((res, index) => {
+                const card = document.createElement('div');
+                card.className = "bg-gray-900 border border-gray-800 rounded-xl overflow-hidden hover:border-gray-600 transition-colors group relative shadow-sm hover:shadow-lg hover:shadow-black/50 animate-fade-in";
+                card.style.animationDelay = `${index * 50}ms`;
+                
+                card.innerHTML = `
+                    <div class="aspect-square relative overflow-hidden bg-gray-950">
+                        <img src="${res.thumbnail}" alt="thumbnail" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 opacity-80 group-hover:opacity-100" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iIzFmMjkzNyIvPjwvc3ZnPg=='">
+                        <div class="absolute top-2 right-2 bg-black/70 backdrop-blur-sm text-xs font-mono px-2 py-1 rounded text-accent-400 border border-white/10 font-bold shadow-sm">
+                            ${res.score}
+                        </div>
+                        
+                        <!-- Hover Action Overlay -->
+                        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-[2px]">
+                            <button onclick="openSystemViewer('${res.path.replace(/\\/g, '\\\\')}')" class="p-2.5 bg-gray-800 hover:bg-accent-600 text-white rounded-full transition-colors shadow-lg" title="Open in System Viewer">
+                                <i class="ph ph-arrow-square-out text-lg"></i>
+                            </button>
+                            <button onclick="copyPathToClipboard('${res.path.replace(/\\/g, '\\\\')}')" class="p-2.5 bg-gray-800 hover:bg-gray-700 text-white rounded-full transition-colors shadow-lg" title="Copy Path">
+                                <i class="ph ph-copy text-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="p-3">
+                        <p class="text-xs font-medium text-gray-300 truncate" title="${res.filename}">${res.filename}</p>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        // --- Utility Actions ---
+        async function openSystemViewer(path) {
+            logToTerminal(`Triggering OS file open: ${path}`, 'info');
+            if (CONFIG.MOCK_MODE) return;
+            try {
+                await fetch(`${CONFIG.API_BASE}/open`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path })
+                });
+            } catch (err) {
+                logToTerminal(`Open failed: ${err.message}`, 'error');
+            }
+        }
+
+        function copyPathToClipboard(path) {
+            try {
+                // Create a temporary textarea to hold the text
+                const tempTextArea = document.createElement("textarea");
+                tempTextArea.value = path;
+                // Add it to the document body
+                document.body.appendChild(tempTextArea);
+                // Select the text
+                tempTextArea.select();
+                // Execute the copy command
+                document.execCommand("copy");
+                // Remove the temporary textarea
+                document.body.removeChild(tempTextArea);
+                logToTerminal(`Path copied to clipboard.`, 'success');
+            } catch (err) {
+                logToTerminal(`Failed to copy path.`, 'error');
+            }
+        }
+
+        // --- Recent Searches (LocalStorage) ---
+        function saveRecentSearch(query) {
+            let searches = JSON.parse(localStorage.getItem(recentSearchesKey) || '[]');
+            searches = searches.filter(s => s !== query); // Remove duplicates
+            searches.unshift(query);
+            if (searches.length > 5) searches.pop(); // Keep last 5
+            localStorage.setItem(recentSearchesKey, JSON.stringify(searches));
+            loadRecentSearches();
+        }
+
+        function loadRecentSearches() {
+            const container = document.getElementById('recent-searches');
+            const searches = JSON.parse(localStorage.getItem(recentSearchesKey) || '[]');
+            
+            container.innerHTML = searches.length > 0 
+                ? `<i class="ph ph-clock-counter-clockwise text-gray-500 mr-1 hidden md:block"></i>` 
+                : '';
+
+            searches.forEach(q => {
+                const btn = document.createElement('button');
+                btn.className = "px-3 py-1 bg-gray-800/50 hover:bg-gray-800 border border-gray-700/50 hover:border-accent-500/50 rounded-full text-xs text-gray-400 hover:text-gray-200 transition-colors whitespace-nowrap truncate max-w-[120px]";
+                btn.innerText = q;
+                btn.title = q;
+                btn.onclick = () => {
+                    document.getElementById('search-query').value = q;
+                    executeSearch(q);
+                };
+                container.appendChild(btn);
+            });
+        }
+    </script>
+</body>
+</html>
