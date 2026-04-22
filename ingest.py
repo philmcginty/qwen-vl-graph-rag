@@ -44,7 +44,7 @@ REQUEST_TIMEOUT = 60    # Seconds to wait for Qwen per image
 
 # ── Image Discovery ───────────────────────────────────────────────────────────
 
-def find_images(root: Path, folder_filter: str = None):
+def find_images(root: Path, folder_filter: str | None = None):
     """Walk library tree and return all image paths."""
     images = []
     for path in sorted(root.rglob("*")):

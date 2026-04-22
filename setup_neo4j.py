@@ -10,6 +10,7 @@ Environment variables (loaded automatically from backend/.env if present):
 """
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -25,7 +26,15 @@ VECTOR_INDEX = os.getenv("QVLRAG_VECTOR_INDEX", "velvet_image_vector")
 VECTOR_DIM = 2048  # Qwen3-VL-Embedding-2B output dimension
 
 
+def validate_vector_index_name(name: str) -> str:
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+        raise ValueError(f"Invalid QVLRAG_VECTOR_INDEX: {name!r}")
+    return name
+
+
 def run(driver):
+    vector_index = validate_vector_index_name(VECTOR_INDEX)
+
     with driver.session() as session:
 
         # ── Constraints ───────────────────────────────────────────────
@@ -41,14 +50,14 @@ def run(driver):
 
         result = session.run(f"""
             SHOW INDEXES YIELD name, type
-            WHERE name = '{VECTOR_INDEX}'
+            WHERE name = '{vector_index}'
             RETURN name
         """)
         if result.single():
-            print(f"  ⚠ {VECTOR_INDEX} already exists — skipping")
+            print(f"  ⚠ {vector_index} already exists — skipping")
         else:
             session.run(f"""
-                CREATE VECTOR INDEX {VECTOR_INDEX} IF NOT EXISTS
+                CREATE VECTOR INDEX {vector_index} IF NOT EXISTS
                 FOR (i:VelvetImage) ON (i.embedding)
                 OPTIONS {{
                     indexConfig: {{
@@ -57,7 +66,7 @@ def run(driver):
                     }}
                 }}
             """)
-            print(f"  ✓ {VECTOR_INDEX} ({VECTOR_DIM}d, cosine)")
+            print(f"  ✓ {vector_index} ({VECTOR_DIM}d, cosine)")
 
         # ── Verify ────────────────────────────────────────────────────
         print("\nCurrent indexes:")

@@ -4,6 +4,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -28,7 +29,7 @@ active_ingest_process: subprocess.Popen[str] | None = None
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins or ["*"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -46,6 +47,26 @@ def qwen_health() -> dict[str, Any]:
     response = requests.get(f"{settings.qwen_url}/health", timeout=5)
     response.raise_for_status()
     return response.json()
+
+
+def validate_vector_index_name(name: str) -> str:
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+        raise ValueError(f"Invalid QVLRAG_VECTOR_INDEX: {name!r}")
+    return name
+
+
+def resolve_library_path(path_str: str) -> Path:
+    if settings.library_root is None:
+        raise HTTPException(status_code=400, detail="QVLRAG_LIBRARY_ROOT is not configured")
+
+    requested_path = Path(path_str).expanduser().resolve()
+
+    try:
+        requested_path.relative_to(settings.library_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="Path must be inside QVLRAG_LIBRARY_ROOT") from exc
+
+    return requested_path
 
 
 def open_with_default_app(path: Path) -> None:
@@ -89,8 +110,10 @@ def embed_uploaded_image(upload: UploadFile) -> list[float]:
 
 
 def query_vector_search(embedding: list[float], top_n: int = 20, category: str | None = None) -> list[dict[str, Any]]:
+    vector_index = validate_vector_index_name(settings.vector_index)
+
     query_all = f"""
-        CALL db.index.vector.queryNodes('{settings.vector_index}', $top_n, $embedding)
+        CALL db.index.vector.queryNodes('{vector_index}', $top_n, $embedding)
         YIELD node, score
         RETURN node.path AS path,
                node.filename AS filename,
@@ -101,7 +124,7 @@ def query_vector_search(embedding: list[float], top_n: int = 20, category: str |
     """
 
     query_filtered = f"""
-        CALL db.index.vector.queryNodes('{settings.vector_index}', $top_n, $embedding)
+        CALL db.index.vector.queryNodes('{vector_index}', $top_n, $embedding)
         YIELD node, score
         WHERE node.size_category = $category
         RETURN node.path AS path,
@@ -226,7 +249,7 @@ async def ingest(request: IngestRequest):
     if not script_path.exists():
         raise HTTPException(status_code=500, detail="ingest.py not found")
 
-    command = ["python", str(script_path)]
+    command = [sys.executable, str(script_path)]
     if request.folder and request.folder != "All":
         command.extend(["--folder", request.folder])
     if request.limit is not None:
@@ -276,8 +299,8 @@ async def ingest(request: IngestRequest):
 
 @app.post("/api/open")
 def open_file(request: OpenRequest):
-    path = Path(request.path)
-    if not path.exists():
+    path = resolve_library_path(request.path)
+    if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
 
     try:

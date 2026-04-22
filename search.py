@@ -17,6 +17,7 @@ Environment variables (loaded automatically from backend/.env if present):
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -33,6 +34,12 @@ NEO4J_URI = os.getenv("QVLRAG_NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("QVLRAG_NEO4J_USER", "neo4j")
 NEO4J_PASS = os.getenv("QVLRAG_NEO4J_PASS", "")
 VECTOR_INDEX = os.getenv("QVLRAG_VECTOR_INDEX", "velvet_image_vector")
+
+
+def validate_vector_index_name(name: str) -> str:
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+        raise ValueError(f"Invalid QVLRAG_VECTOR_INDEX: {name!r}")
+    return name
 
 
 def embed_text(text: str) -> list[float]:
@@ -56,11 +63,13 @@ def embed_image(image_path: str) -> list[float]:
     return resp.json()["data"][0]["embedding"]
 
 
-def search(driver, embedding: list[float], top_n: int = 5, category: str = None) -> list[dict]:
+def search(driver, embedding: list[float], top_n: int = 5, category: str | None = None) -> list[dict]:
+    vector_index = validate_vector_index_name(VECTOR_INDEX)
+
     with driver.session() as session:
         if category:
             result = session.run(f"""
-                CALL db.index.vector.queryNodes('{VECTOR_INDEX}', $top_n, $embedding)
+                CALL db.index.vector.queryNodes('{vector_index}', $top_n, $embedding)
                 YIELD node, score
                 WHERE node.size_category = $category
                 RETURN node.path AS path,
@@ -72,7 +81,7 @@ def search(driver, embedding: list[float], top_n: int = 5, category: str = None)
             """, embedding=embedding, top_n=top_n * 3, category=category)
         else:
             result = session.run(f"""
-                CALL db.index.vector.queryNodes('{VECTOR_INDEX}', $top_n, $embedding)
+                CALL db.index.vector.queryNodes('{vector_index}', $top_n, $embedding)
                 YIELD node, score
                 RETURN node.path AS path,
                        node.filename AS filename,

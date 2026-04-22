@@ -40,7 +40,24 @@ Run your Qwen3-VL embedding server first so the backend and CLI tools can reques
 
 Make sure Neo4j is running and reachable at your configured Bolt URL.
 
-### 3. Copy the env template and fill in your local values
+### 3. Create and activate a virtual environment
+
+From the repo root:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+On macOS and Linux, this avoids installing packages into the system Python.
+
+### 4. Install dependencies
+
+```bash
+pip install -r backend/requirements.txt
+```
+
+### 5. Copy the env template and fill in your local values
 
 ```bash
 cp backend/.env.example backend/.env
@@ -53,13 +70,7 @@ At minimum, set:
 
 The backend and CLI scripts load `backend/.env` automatically if it exists.
 
-### 4. Install dependencies
-
-```bash
-pip install -r backend/requirements.txt
-```
-
-### 5. Create the Neo4j vector index
+### 6. Create the Neo4j vector index
 
 Run this before `ingest.py` on a fresh database:
 
@@ -67,7 +78,7 @@ Run this before `ingest.py` on a fresh database:
 python setup_neo4j.py
 ```
 
-### 6. Start the backend
+### 7. Start the backend
 
 From the repo root:
 
@@ -75,20 +86,26 @@ From the repo root:
 uvicorn backend.app:app --host 127.0.0.1 --port 8001 --reload
 ```
 
-### 7. Open the frontend
+### 8. Serve the frontend locally and open it in your browser
 
-Open `frontend/console.html` in your browser.
+Because the backend now uses a safer default CORS configuration, serve the frontend over `http://localhost` instead of opening `console.html` directly with `file://`.
 
-On macOS:
+From the repo root:
 
 ```bash
-open frontend/console.html
+cd frontend
+python -m http.server 8080
 ```
 
-On Linux:
+Then open:
+
+- http://127.0.0.1:8080/console.html
+- or http://localhost:8080/console.html
+
+On macOS you can do:
 
 ```bash
-xdg-open frontend/console.html
+open http://127.0.0.1:8080/console.html
 ```
 
 ## Minimal run commands
@@ -96,15 +113,20 @@ xdg-open frontend/console.html
 Once Qwen and Neo4j are already running, the shortest path is:
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt
+
 cp backend/.env.example backend/.env
 # edit backend/.env with your Neo4j password and image library path
 
-pip install -r backend/requirements.txt
 python setup_neo4j.py
 uvicorn backend.app:app --port 8001
+
+cd frontend && python -m http.server 8080
 ```
 
-Then open `frontend/console.html` in your browser.
+Then open `http://127.0.0.1:8080/console.html` in your browser.
 
 ## Environment Variables
 
@@ -118,7 +140,7 @@ Then open `frontend/console.html` in your browser.
 | `QVLRAG_VECTOR_INDEX` | `velvet_image_vector` | Neo4j vector index name |
 | `QVLRAG_API_HOST` | `127.0.0.1` | Backend bind host |
 | `QVLRAG_API_PORT` | `8001` | Backend bind port |
-| `QVLRAG_CORS_ORIGINS` | `http://localhost:8001,http://127.0.0.1:8001,null` | Allowed CORS origins |
+| `QVLRAG_CORS_ORIGINS` | `http://localhost:8001,http://127.0.0.1:8001,http://localhost:8080,http://127.0.0.1:8080` | Allowed CORS origins |
 
 ## CLI Usage
 
@@ -185,6 +207,12 @@ python ingest.py
 
 That means the Qwen server must be able to access the same filesystem paths as this repo. If your Qwen server is remote or containerized, mount the image library into that environment or adapt the scripts to send image bytes instead of paths.
 
+### Safer file opening behavior
+
+The backend `POST /api/open` endpoint only opens files that resolve inside `QVLRAG_LIBRARY_ROOT`.
+
+This is intentional: it keeps the convenience feature for browsing retrieved images, while avoiding arbitrary host-path opens outside the configured library.
+
 ## API Endpoints
 
 | Endpoint | Method | Description |
@@ -192,7 +220,7 @@ That means the Qwen server must be able to access the same filesystem paths as t
 | `/api/health` | GET | Service health + node count |
 | `/api/search` | POST | Text or image search (multipart/form-data) |
 | `/api/ingest` | POST | Start ingest job (SSE log streaming) |
-| `/api/open` | POST | Open image file in the system viewer |
+| `/api/open` | POST | Open an image from `QVLRAG_LIBRARY_ROOT` in the system viewer |
 
 ## Project Structure
 
