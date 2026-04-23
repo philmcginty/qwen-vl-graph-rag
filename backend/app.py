@@ -26,6 +26,7 @@ except ImportError:
 
 app = FastAPI(title="qwen-vlrag API", version="0.1.0")
 active_ingest_process: subprocess.Popen[str] | None = None
+active_ingest_stop_requested = False
 
 app.add_middleware(
     CORSMiddleware,
@@ -193,7 +194,7 @@ def health():
             driver.verify_connectivity()
             neo4j_up = True
             with driver.session() as session:
-                row = session.run("MATCH (i:VelvetImage) RETURN count(i) AS count").single()
+                row = session.run("MATCH (i:Image) RETURN count(i) AS count").single()
                 node_count = int(row["count"] if row else 0)
     except Exception as exc:
         neo4j_error = str(exc)
@@ -241,6 +242,7 @@ def search(
 @app.post("/api/ingest")
 async def ingest(request: IngestRequest):
     global active_ingest_process
+    global active_ingest_stop_requested
 
     if active_ingest_process is not None and active_ingest_process.poll() is None:
         raise HTTPException(status_code=409, detail="An ingest job is already running")
@@ -261,6 +263,8 @@ async def ingest(request: IngestRequest):
 
     async def event_stream():
         global active_ingest_process
+        global active_ingest_stop_requested
+        active_ingest_stop_requested = False
         try:
             active_ingest_process = subprocess.Popen(
                 command,
@@ -290,11 +294,33 @@ async def ingest(request: IngestRequest):
             if return_code == 0:
                 yield sse_event("done", {"ok": True, "returncode": return_code})
             else:
-                yield sse_event("done", {"ok": False, "returncode": return_code})
+                yield sse_event(
+                    "done",
+                    {
+                        "ok": False,
+                        "returncode": return_code,
+                        "stopped": active_ingest_stop_requested,
+                    },
+                )
         finally:
             active_ingest_process = None
+            active_ingest_stop_requested = False
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.post("/api/ingest/stop")
+def stop_ingest():
+    global active_ingest_process
+    global active_ingest_stop_requested
+
+    if active_ingest_process is None or active_ingest_process.poll() is not None:
+        raise HTTPException(status_code=409, detail="No ingest job is currently running")
+
+    active_ingest_stop_requested = True
+    active_ingest_process.terminate()
+
+    return {"ok": True, "message": "Stop signal sent"}
 
 
 @app.post("/api/open")

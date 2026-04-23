@@ -2,7 +2,7 @@
 ingest.py — Image ingestion into Neo4j via Qwen VL embeddings
 
 Walks an image directory tree, embeds each image via a Qwen VL embedding server,
-and stores as VelvetImage nodes in Neo4j. Resumable — skips already-embedded images.
+and stores as Image nodes in Neo4j. Resumable — skips already-embedded images.
 
 Usage:
     python ingest.py --root /path/to/images            # ingest everything
@@ -81,7 +81,7 @@ def get_subfolder(path: Path, root: Path) -> str:
 def get_ingested_paths(driver) -> set:
     """Return set of file paths already in Neo4j."""
     with driver.session() as session:
-        result = session.run("MATCH (i:VelvetImage) RETURN i.path AS path")
+        result = session.run("MATCH (i:Image) RETURN i.path AS path")
         return {row["path"] for row in result}
 
 # ── Qwen Embedding ────────────────────────────────────────────────────────────
@@ -118,7 +118,7 @@ def write_batch(driver, batch: list[dict]):
     with driver.session() as session:
         session.run("""
             UNWIND $nodes AS n
-            MERGE (i:VelvetImage {path: n.path})
+            MERGE (i:Image {path: n.path})
             SET i.filename = n.filename,
                 i.size_category = n.size_category,
                 i.subfolder = n.subfolder,

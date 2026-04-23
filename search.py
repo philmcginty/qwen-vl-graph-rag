@@ -34,7 +34,7 @@ QWEN_URL = f"{QWEN_BASE}/v1/embeddings"
 NEO4J_URI = os.getenv("QVLRAG_NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("QVLRAG_NEO4J_USER", "neo4j")
 NEO4J_PASS = os.getenv("QVLRAG_NEO4J_PASS", "")
-VECTOR_INDEX = os.getenv("QVLRAG_VECTOR_INDEX", "velvet_image_vector")
+VECTOR_INDEX = os.getenv("QVLRAG_VECTOR_INDEX", "qvlrag_image_vector")
 
 
 def validate_vector_index_name(name: str) -> str:

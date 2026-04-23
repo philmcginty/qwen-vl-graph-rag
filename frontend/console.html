@@ -112,7 +112,7 @@
                     </div>
 
                     <div class="flex gap-3 justify-end">
-                        <button id="btn-stop" onclick="stopIngestion()" class="hidden px-5 py-2.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 border border-red-500/20 rounded-lg text-sm font-semibold transition-all items-center gap-2">
+                        <button id="btn-stop" onclick="requestIngestionStop()" class="hidden px-5 py-2.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 border border-red-500/20 rounded-lg text-sm font-semibold transition-all items-center gap-2">
                             <i class="ph-fill ph-stop"></i> Stop
                         </button>
                         <button id="btn-start" onclick="startIngestion()" class="w-full md:w-auto px-6 py-2.5 bg-accent-600 hover:bg-accent-500 text-white rounded-lg text-sm font-semibold transition-all flex justify-center items-center gap-2 shadow-[0_0_15px_rgba(124,58,237,0.3)]">
@@ -229,15 +229,27 @@
          * ==========================================
          * Set MOCK_MODE = false when connecting to your real FastAPI backend.
          */
+        function resolveApiBase() {
+            const params = new URLSearchParams(window.location.search);
+            const queryOverride = params.get('api_base');
+            if (queryOverride) return queryOverride.replace(/\/$/, '');
+
+            if (window.VLRAG_CONFIG?.apiBase) {
+                return window.VLRAG_CONFIG.apiBase.replace(/\/$/, '');
+            }
+
+            const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+            const hostname = window.location.hostname || '127.0.0.1';
+            return `${protocol}//${hostname}:8001/api`;
+        }
+
         const CONFIG = {
             MOCK_MODE: false,
-            API_BASE: 'http://localhost:8001/api', // FastAPI wrapper base URL
-            QWEN_URL: 'http://localhost:8000',     // Qwen embedding server healthcheck
+            API_BASE: resolveApiBase(),
         };
 
         // State variables
         let isIngesting = false;
-        let ingestSimulationInterval;
         const recentSearchesKey = 'vlrag_recent_searches';
 
         // Initialize on load
@@ -341,7 +353,7 @@
 
             if (CONFIG.MOCK_MODE) {
                 logToTerminal('MOCK_MODE is on; real ingest skipped.', 'warn');
-                setTimeout(() => stopIngestion(), 1000);
+                setTimeout(() => finishIngestion(true), 1000);
                 return;
             }
 
@@ -394,23 +406,46 @@
                         } else if (eventName === 'error') {
                             logToTerminal(payload.message, 'error');
                         } else if (eventName === 'done') {
-                            progressText.innerText = payload.ok ? 'Ingestion Complete.' : 'Ingestion Failed.';
-                            logToTerminal(`Ingest exited with code ${payload.returncode}`, payload.ok ? 'success' : 'error');
-                            stopIngestion(payload.ok);
+                            const wasStopped = Boolean(payload.stopped);
+                            progressText.innerText = payload.ok
+                                ? 'Ingestion Complete.'
+                                : wasStopped
+                                    ? 'Ingestion Stopped.'
+                                    : 'Ingestion Failed.';
+                            logToTerminal(
+                                wasStopped
+                                    ? `Ingest stopped with code ${payload.returncode}`
+                                    : `Ingest exited with code ${payload.returncode}`,
+                                payload.ok ? 'success' : wasStopped ? 'warn' : 'error'
+                            );
+                            finishIngestion(payload.ok, wasStopped);
                             pollStatus();
                         }
                     }
                 }
             } catch (err) {
                 logToTerminal(`Ingest request failed: ${err.message}`, 'error');
-                stopIngestion(false);
+                finishIngestion(false);
             }
         }
 
-        function stopIngestion(completed = false) {
+        async function requestIngestionStop() {
+            if (!isIngesting) return;
+            logToTerminal('Sending stop signal to ingest process...', 'warn');
+
+            try {
+                const res = await fetch(`${CONFIG.API_BASE}/ingest/stop`, { method: 'POST' });
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(text || `HTTP ${res.status}`);
+                }
+            } catch (err) {
+                logToTerminal(`Stop request failed: ${err.message}`, 'error');
+            }
+        }
+
+        function finishIngestion(completed = false, stopped = false) {
             isIngesting = false;
-            if (ingestSimulationInterval) clearInterval(ingestSimulationInterval);
-            
             document.getElementById('btn-stop').classList.add('hidden');
             document.getElementById('btn-start').classList.remove('hidden');
             
@@ -418,9 +453,11 @@
             if (completed) {
                 progressText.innerText = "Ingestion Complete.";
                 logToTerminal(`Process completed successfully.`, 'success');
+            } else if (stopped) {
+                progressText.innerText = "Ingestion Stopped.";
+                logToTerminal(`Process stopped by user request.`, 'warn');
             } else {
-                progressText.innerText = "Ingestion Aborted.";
-                logToTerminal(`Received stop signal. Terminating subprocess.`, 'warn');
+                progressText.innerText = "Ingestion Failed.";
             }
         }
 

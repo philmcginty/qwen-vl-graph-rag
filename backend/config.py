@@ -25,7 +25,7 @@ class Settings:
         library_root = os.getenv("QVLRAG_LIBRARY_ROOT", "").strip()
         self.library_root: Path | None = Path(library_root).expanduser().resolve() if library_root else None
 
-        self.vector_index: str = os.getenv("QVLRAG_VECTOR_INDEX", "velvet_image_vector")
+        self.vector_index: str = os.getenv("QVLRAG_VECTOR_INDEX", "qvlrag_image_vector")
         self.api_host: str = os.getenv("QVLRAG_API_HOST", "127.0.0.1")
         self.api_port: int = int(os.getenv("QVLRAG_API_PORT", "8001"))
 

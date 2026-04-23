@@ -6,7 +6,7 @@ Environment variables (loaded automatically from backend/.env if present):
     QVLRAG_NEO4J_URI   — Neo4j bolt URI (default: bolt://localhost:7687)
     QVLRAG_NEO4J_USER  — Neo4j username (default: neo4j)
     QVLRAG_NEO4J_PASS  — Neo4j password (default: empty)
-    QVLRAG_VECTOR_INDEX — Neo4j vector index name (default: velvet_image_vector)
+    QVLRAG_VECTOR_INDEX — Neo4j vector index name (default: qvlrag_image_vector)
 """
 
 import os
@@ -22,7 +22,7 @@ load_dotenv(Path(__file__).resolve().parent / "backend" / ".env")
 NEO4J_URI = os.getenv("QVLRAG_NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("QVLRAG_NEO4J_USER", "neo4j")
 NEO4J_PASS = os.getenv("QVLRAG_NEO4J_PASS", "")
-VECTOR_INDEX = os.getenv("QVLRAG_VECTOR_INDEX", "velvet_image_vector")
+VECTOR_INDEX = os.getenv("QVLRAG_VECTOR_INDEX", "qvlrag_image_vector")
 VECTOR_DIM = 2048  # Qwen3-VL-Embedding-2B output dimension
 
 
@@ -40,10 +40,10 @@ def run(driver):
         # ── Constraints ───────────────────────────────────────────────
         print("Creating constraints...")
         session.run("""
-            CREATE CONSTRAINT velvet_image_path IF NOT EXISTS
-            FOR (i:VelvetImage) REQUIRE i.path IS UNIQUE
+            CREATE CONSTRAINT qvlrag_image_path IF NOT EXISTS
+            FOR (i:Image) REQUIRE i.path IS UNIQUE
         """)
-        print("  ✓ VelvetImage.path uniqueness constraint")
+        print("  ✓ Image.path uniqueness constraint")
 
         # ── Vector Indexes ────────────────────────────────────────────
         print("Creating vector indexes...")
@@ -58,7 +58,7 @@ def run(driver):
         else:
             session.run(f"""
                 CREATE VECTOR INDEX {vector_index} IF NOT EXISTS
-                FOR (i:VelvetImage) ON (i.embedding)
+                FOR (i:Image) ON (i.embedding)
                 OPTIONS {{
                     indexConfig: {{
                         `vector.dimensions`: {VECTOR_DIM},

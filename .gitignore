@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .env
+.claude/
 ingest_failures.log
 *.egg-info/
 dist/
