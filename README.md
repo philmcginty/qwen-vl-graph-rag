@@ -1,4 +1,4 @@
-# qwen-vlrag
+# qwen-vl-graph-rag
 
 A local multimodal retrieval system that ingests images with Qwen3-VL embeddings, stores them in Neo4j, and lets you search by text or reference image through a lightweight web console.
 
@@ -258,7 +258,7 @@ Because that action runs on the backend host, it is mainly a local-development c
 ## Project Structure
 
 ```text
-qwen-vlrag/
+qwen-vl-graph-rag/
 ├── backend/
 │   ├── app.py
 │   ├── config.py
